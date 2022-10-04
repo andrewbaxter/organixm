@@ -1,4 +1,4 @@
-# Fork
+# Fork from NixOS - NixOS license applies
 # Changes:
 # rootUuid for specifying uuid
 # out_filename as var for postVM

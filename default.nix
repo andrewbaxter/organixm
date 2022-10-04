@@ -43,7 +43,7 @@ let
       system = eval.config.system.build.toplevel;
       inherit (eval.config.system.build) vm vmWithBootLoader;
     });
-  version = build_system
+  version = (build_system
     ({ config, modulesPath, pkgs, lib, ... }:
       let
         joinlines = (list: lib.lists.fold (a: b: a + "\n" + b) "" list);
@@ -297,7 +297,7 @@ let
               };
           };
         };
-      }).config.build.system;
+      })).config.build.system;
 in
 build_system
   ({ config, modulesPath, pkgs, lib, ... }:
@@ -317,7 +317,7 @@ build_system
 
           # Installer image, an iso for usb/cd that will format a system
           # and install the above version
-          installer = build_system ({ config, modulesPath, pkgs, lib, ... }:
+          installer = (build_system ({ config, modulesPath, pkgs, lib, ... }:
             {
               imports = [
                 <nixpkgs/nixos/modules/installer/cd-dvd/iso-image.nix>
@@ -415,7 +415,7 @@ build_system
                   };
                 };
               };
-            }).config.build.system.installer;
+            })).config.build.system.installer;
         };
       };
     };

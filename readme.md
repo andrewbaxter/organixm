@@ -64,7 +64,9 @@ You need a few more params for it to be useful though.
 
 See `default.nix` for parameter descriptions, or in case this gets out of sync with the code (really wish Github let you import clips of source code).
 
-(if you have a flake or you'd like to wrap it in your own expression, you can use `pkgs.fetchFromGithub` or similar to pin a specific version)
+If you have a flake or you'd like to wrap it in your own expression, you can use `pkgs.fetchFromGithub` or similar to pin a specific version.
+
+If you use it with the `master.tar.gz` url as above, you'll need to `nix-store --gc` before nix will pull a new version.
 
 ## Preparing the installer with the initial version
 

@@ -224,7 +224,27 @@ let
                 };
               in
               rec {
-                tools = pkgs.callPackage (import ./tools.nix) { };
+                tools = pkgs.callPackage
+                  ({ lib, rustPlatform, openssl, pkg-config }:
+                    rustPlatform.buildRustPackage rec {
+                      pname = "organixm";
+                      version = "0.0.1";
+                      src = ./tools;
+                      cargoLock = {
+                        lockFile = ./tools/Cargo.lock;
+                        outputHashes = {
+                          "rust-s3-0.33.0-beta2" = "sha256-nlsQoip0xle4qnm1oPbtn0QaxBUJwT1sRzqwYqIlFCw=";
+                        };
+                      };
+                      nativeBuildInputs = [ pkg-config ];
+                      buildInputs = [ openssl ];
+                      meta = with lib; {
+                        description = "organixm tools";
+                        homepage = "https://example.com/";
+                        license = with licenses; [ isc ];
+                      };
+                    })
+                  { };
                 image = import ./patched/nixos/lib/make-disk-image.nix {
                   rootUuid = version_uuid;
                   format = "raw";

@@ -1,6 +1,5 @@
-{ channel ? <nixpkgs>
-
-, # Path/attrset (passed to imports=), System config to use to build this version
+{
+  # Path/attrset (passed to imports=), System config to use to build this version
   version_config
 
 , # String, UUID for this version. You can generate it with `uuidgen` and every version needs
@@ -34,7 +33,7 @@
 let
   build_system = (configuration:
     let
-      eval = import (channel + "/nixos/lib/eval-config.nix") {
+      eval = import <nixpkgs/nixos/lib/eval-config.nix> {
         system = builtins.currentSystem;
         modules = [ configuration ];
       };
@@ -51,7 +50,7 @@ let
       in
       {
         imports = [
-          (channel + "/nixos/modules/profiles/all-hardware.nix")
+          <nixpkgs/nixos/modules/profiles/all-hardware.nix>
           version_config
         ];
 
@@ -341,8 +340,8 @@ build_system
           installer = (build_system ({ config, modulesPath, pkgs, lib, ... }:
             {
               imports = [
-                (channel + "/nixos/modules/installer/cd-dvd/iso-image.nix")
-                (channel + "/nixos/modules/profiles/all-hardware.nix")
+                <nixpkgs/nixos/modules/installer/cd-dvd/iso-image.nix>
+                <nixpkgs/nixos/modules/profiles/all-hardware.nix>
               ];
 
               config = {

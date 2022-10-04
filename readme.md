@@ -12,7 +12,7 @@ The installer is used for initial system setup and contains the first system ver
 
 Subsequent versions you upload to a file server (right now, any S3 compatible).
 
-When the system boots, it checks for a newer version from the file server and updates.
+When the system boots, it checks for a newer version from the file server and updates itself.
 
 # Usage
 
@@ -24,9 +24,7 @@ It defines a function that takes a system config (path) plus a number of other p
 
 ### Your system must include
 
-- A hostname
 - Automatic network setup -- organixm needs network access on boot to update
-- Services, system packages
 
 ### Your system must _not_ include
 
@@ -120,13 +118,12 @@ OR
 
 ## The update mechanism
 
-The bare metal provisioner
+The installer
 
+- Finds any disk
 - creates two OS partitions
-- downloads the latest image and writes it to both partitions
-- points grub to one of the partitions
-
-The cloud provisioner is simply a template of an already-provisioned host.
+- downloads the latest image and writes it to one partition
+- points grub to that partition
 
 The version image has a service that
 

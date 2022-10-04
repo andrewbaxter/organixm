@@ -51,13 +51,13 @@ The base command for building everything is
 nix-build https://github.com/andrewbaxter/organixm/archive/master.tar.gz \
   --arg version_config ./kiosk.nix \
   --argstr version_uuid ABCD-EFGH-IJKL-MNOPQR-SOMETHING \
-  --argstr region us-east-1 \
-  --argstr bucket myorganixms \
-  --argstr object_path kiosk/pos \
-  --argstr ro_access_key **** \
-  --argstr ro_secret_key **** \
-  --argstr successUnit my-kiosk.service \
-  --arg max_size 10
+  --argstr version_region us-east-1 \
+  --argstr version_bucket myorganixms \
+  --argstr version_object_path kiosk/pos \
+  --argstr version_ro_access_key **** \
+  --argstr version_ro_secret_key **** \
+  --argstr version_success_unit my-kiosk.service \
+  --arg version_max_size 10
 ```
 
 You need a few more params for it to be useful though.
@@ -72,7 +72,7 @@ Call the above with the additional parameters
 
 - `-A config.system.build.installer -o installer`
 
-  This will produce a symlink to the installer ISO image. `sudo cp installer /dev/disk/by-partlabel/my-usb-drive`
+  This will produce a symlink to the installer ISO image derivation. `sudo cp installer/iso/nixos.iso /dev/disk/by-partlabel/my-usb-drive`
 
 To use the image, just boot into it. It will automatically format the first disk it sees and install the version bundled with it, then shut down the computer.
 

@@ -8,26 +8,26 @@
   version_uuid
 
 , # String, S3 region (us-east-1) or S3-compatible endpoint (sg1.your.host) to pull new versions
-  region
+  version_region
 
 , # String, Bucket from which to pull new versions
-  bucket
+  version_bucket
 
 , # String, Object in bucket from which to pull new versions; meta must be located at same path plus .meta
-  object_path
+  version_object_path
 
 , # String, Access key for pulling new versions (read only - added to version image for self update)
-  ro_access_key
+  version_ro_access_key
 
 , # String, Secret key for pulling new versions (read only - added to version image for self update)
-  ro_secret_key
+  version_ro_secret_key
 
 , # String, Systemd unit whose success indicates a successful boot (prevent grub fallback)
-  successUnit
+  version_success_unit
 
-, # Int in GiB, The expected max size of all versions from here out (used to decide size of root partition).
+, # Int (GiB), The expected max size of all versions from here out (used to decide size of root partition).
   # Only used by installer image.
-  max_size
+  version_max_size
 
 }:
 let
@@ -193,8 +193,8 @@ let
               organixm_success = {
                 wantedBy = [ "multi-user.target" ];
                 description = "organixm-success";
-                after = [ version_successUnit "organixm_update.service" ];
-                requires = [ version_successUnit ];
+                after = [ version_success_unit "organixm_update.service" ];
+                requires = [ version_success_unit ];
                 path = [
                   pkgs.grub2
                   pkgs.util-linux
@@ -392,7 +392,7 @@ build_system
                             external_meta = builtins.readFile version.external_meta;
                             init_config = pkgs.writeText "install-config" (
                               lib.strings.addContextFrom external_meta (builtins.toJSON {
-                                size = max_size;
+                                size = version_max_size;
                                 version = builtins.fromJSON (builtins.unsafeDiscardStringContext external_meta);
                                 version_path = version.image_path;
                               })

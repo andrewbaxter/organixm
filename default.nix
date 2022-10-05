@@ -86,6 +86,8 @@ let
         };
 
         config = {
+          nixpkgs.localSystem.system = "x86_64-linux";
+
           boot = {
             loader = {
               grub = {

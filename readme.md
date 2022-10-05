@@ -14,8 +14,6 @@ Subsequent versions you upload to a file server (right now, any S3 compatible).
 
 When the system boots, it checks for a newer version from the file server and updates itself.
 
-See **The future** below for current limitations.
-
 # Usage
 
 `default.nix` can be used directly from `nix-build` or your flake or however you'd like.
@@ -30,6 +28,7 @@ It defines a function that takes a system config (path) plus a number of other p
 
 ### Your system must _not_ include
 
+- `localSystem.system` -- Currently only `x86_64-linux` is supported (see **The future** for excuses)
 - Filesystems on your main disk. The main disk is partitioned and managed by organixm. If you have additional non-boot disks you can define filesystems for those, although you'll need to provide services to make sure they're formatted first.
 
 ### Additional available configuration
@@ -41,7 +40,11 @@ It defines a function that takes a system config (path) plus a number of other p
   - `user`: A user name for the owner of the installed files
   - `group`: A group name for the owner of the installed files
 
+that will be placed on the root partition when building the image.
+
 I mostly use this for enabling linger on systemd user profiles, since there's no other mechanism for this at the moment.
+
+If you want to wait to start things until the update has proceeded, you can add `after = [ "organixm-update.service" ]` to your systemd services.
 
 ## Base usage
 

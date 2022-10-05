@@ -109,7 +109,11 @@ fn main_inner(log: Logger) -> Result<()> {
             .unwrap()
             .as_ref(),
         )?;
-        if let Err(e) = Command::new("grub-install").arg(root_disk.path).run() {
+        if let Err(e) = Command::new("grub-install")
+            .arg("--target=i386-pc")
+            .arg(root_disk.path)
+            .run()
+        {
             return Err(anyhow!("grub-install failed").context(e));
         }
     }

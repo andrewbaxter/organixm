@@ -171,7 +171,11 @@ fn main_inner(log: Logger) -> Result<()> {
                 .as_ref(),
             )
             .map_err(|e| anyhow!("Error writing to grub.cfg").context(e))?;
-        if let Err(e) = Command::new("grub-install").arg(root_disk.path).run() {
+        if let Err(e) = Command::new("grub-install")
+            .arg("--target=i386-pc")
+            .arg(root_disk.path)
+            .run()
+        {
             return Err(anyhow!("grub-install failed").context(e));
         }
     }

@@ -14,6 +14,8 @@ Subsequent versions you upload to a file server (right now, any S3 compatible).
 
 When the system boots, it checks for a newer version from the file server and updates itself.
 
+See **The future** below for current limitations.
+
 # Usage
 
 `default.nix` can be used directly from `nix-build` or your flake or however you'd like.
@@ -139,12 +141,20 @@ The read-onlyness is done by
 - Mounting `/` read-only at boot
 - Mounting an overlay over key read-write directories (`/etc`, mostly for `resolv.conf`)
 
+The remaining space on the boot disk is made into a `rw` partition, used for `/home` and `/var`.
+
 ## Changes from upstream
 
 - `make-disk-image.nix` - the only significant change here is I added a `uuid` parameter to set the root filesystem uuid. I'm not 100% sure this was necessary, it might have been fine with partlabels.
 
 ## The future
 
+- EFI/ARM: Right now this only supports x86/legacy boots. The servers I'm working with all support legacy boot, and Vultr only supports legacy boot so this was the priority. The only thing that's fixed to x86/legacy boots is the disk partitioning and `grub-install` call, which probably needs to be extended for EFI, so it shouldn't theoretically be too hard to add.
+- More smarts about identifying a drive. This is really hard since some cloud providers order disks randomly and there's no generally good way to identify one disk or another. The current "first disk" is probably okay.
+- More filesystem layouts.
+- Supporting more fallbacks?
+
 Some things that didn't quite pan out
 
 - Squashfs: I managed to get the system to boot with some hacks but there were weird issues with nscd, networking, logging in, and various other things breaking. I needed to hack on the NixOS `stage-1-init.sh` among other things. Squashfs would have been cool since they could be put on the same partition to save some space, plus they're smaller and (theoretically) can make boot faster on systems with slow disk io.
+- Hashing while writing the data. I'm not sure what happened, hashing after writing produced the expected sha256 sum. My best guess is the http library is adding an extra null byte at the end or something.

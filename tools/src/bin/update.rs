@@ -57,6 +57,12 @@ fn main_inner(log: Logger) -> Result<()> {
         );
         return Ok(());
     }
+    ext_info!(
+        log,
+        "A new version was found, proceeding with update",
+        current = &current.uuid,
+        new = &new.internal.uuid
+    );
 
     // Identify current and alt root partitions
     let mut found_current = false;
@@ -72,6 +78,11 @@ fn main_inner(log: Logger) -> Result<()> {
                 ext_info!(log, "Digest of alternate partition matches new digest, must have fallen back. Aborting", digest=&new.sha256);
                 return Ok(());
             }
+            ext_info!(
+                log,
+                "Replacing alternate partition with sha",
+                sha = other_digest
+            );
         }
     }
     if !found_current {
@@ -81,6 +92,7 @@ fn main_inner(log: Logger) -> Result<()> {
         found_other_part.ok_or_else(|| anyhow!("Unable to find alternate root device"))?;
 
     // Install + check more things
+    ext_info!(log, "Downloading new image");
     bucket.get_object_to_writer(
         &new.internal.object_path,
         &mut Writer::new(
@@ -88,6 +100,7 @@ fn main_inner(log: Logger) -> Result<()> {
             Decoder::new()?,
         ),
     )?;
+    ext_info!(log, "Verifying image hash");
     let download_digest = file_digest(&other_path, new.size)?;
     if download_digest != new.sha256 {
         return Err(anyhow!(
@@ -98,6 +111,7 @@ fn main_inner(log: Logger) -> Result<()> {
     }
 
     // Update the grub
+    ext_info!(log, "Updating grub");
     {
         let _mount = mount_boot(log.clone())?;
         File::create("/boot/grub/grub.cfg")?.write_all(

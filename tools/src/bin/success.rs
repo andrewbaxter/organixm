@@ -8,7 +8,7 @@ use sloggers::{
     Build,
 };
 use tools::{current_meta, mount_boot, SimpleCommand};
-use tools::{int_err, int_info};
+use tools::{err, info};
 
 fn main_inner(log: Logger) -> Result<()> {
     let current = current_meta()?;
@@ -25,11 +25,11 @@ fn main() {
         let root_log = builder.build().unwrap();
         match main_inner(root_log.clone()) {
             Ok(_) => {
-                int_info!(root_log, "Done.");
+                info!(root_log, "Done");
                 return true;
             }
             Err(e) => {
-                int_err!(root_log, "Exiting with error", err = format!("{:?}", e));
+                err!(root_log, "Exiting with error", err = format!("{:?}", e));
                 return false;
             }
         };

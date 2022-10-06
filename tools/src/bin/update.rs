@@ -1,6 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use askama::Template;
 use chrono::Duration;
+use sha2::{Digest, Sha256};
 use slog::Logger;
 use sloggers::{
     terminal::{Destination, TerminalLoggerBuilder},
@@ -16,8 +17,8 @@ use std::{
 };
 use tools::mount_boot;
 use tools::{
-    current_meta, ext_info, file_digest, find_root_parts, has_internet_gw, int_err, int_info,
-    retry, version_bucket, ExternalMeta, InternalMeta, SimpleCommand,
+    current_meta, ec, err, file_digest, find_root_parts, has_internet_gw, info, retry,
+    version_bucket, ExternalMeta, InternalMeta, ProxyWrite, SimpleCommand,
 };
 use zstd::stream::raw::Decoder;
 use zstd::stream::zio::Writer;
@@ -31,112 +32,142 @@ struct GrubTemplate<'a> {
 
 fn main_inner(log: Logger) -> Result<()> {
     let current = current_meta()?;
+    ec!(
+        (
+            "Updating image from {}/{}",
+            current.bucket,
+            current.object_path
+        ),
+        {
+            // Wait for internet
+            retry(&log, Duration::minutes(10), Duration::seconds(10), || {
+                if has_internet_gw()? {
+                    return Ok(());
+                }
+                return Err(anyhow!("No default route found yet"));
+            })?;
 
-    // Wait for internet
-    retry(&log, Duration::minutes(10), Duration::seconds(10), || {
-        if has_internet_gw()? {
-            return Ok(());
-        }
-        return Err(anyhow!("No default route found yet"));
-    })?;
+            // Get info on candidate version
+            let bucket = version_bucket(&current)?;
 
-    // Get info on candidate version
-    let bucket = version_bucket(&current)?;
-    let new: ExternalMeta = serde_json::from_slice(
-        bucket
-            .get_object(format!("{}.meta", current.object_path))
-            .map_err(|e| anyhow!("Failed to download meta for new version").context(e))?
-            .bytes(),
-    )
-    .map_err(|e| anyhow!("Failed to parse meta json for new version").context(e))?;
-    if current.uuid == new.internal.uuid {
-        ext_info!(
-            log,
-            "Latest version on file server matches currently booted version",
-            uuid = &new.internal.uuid
-        );
-        return Ok(());
-    }
-    ext_info!(
-        log,
-        "A new version was found, proceeding with update",
-        current = &current.uuid,
-        new = &new.internal.uuid
-    );
-
-    // Identify current and alt root partitions
-    let mut found_current = false;
-    let mut found_other_part = None;
-    let (root_disk, root_parts) = find_root_parts(&log)?;
-    for part in root_parts {
-        if let Some(_) = part.mountpoint {
-            found_current = true;
-        } else {
-            found_other_part = Some(PathBuf::from_str(&part.path)?);
-            let other_digest = file_digest(Path::new(&part.path), new.size)?;
-            if other_digest == new.sha256 {
-                ext_info!(log, "Digest of alternate partition matches new digest, must have fallen back. Aborting", digest=&new.sha256);
+            let new: ExternalMeta = ec!(
+                ("Fetching new version meta"),
+                Ok(serde_json::from_slice(
+                    bucket
+                        .get_object(format!("{}.meta", current.object_path))
+                        .context("Failed to download meta for new version")?
+                        .bytes(),
+                )?)
+            )?;
+            if current.uuid == new.internal.uuid {
+                info!(
+                    log,
+                    "Latest version on file server matches currently booted version",
+                    uuid = &new.internal.uuid
+                );
                 return Ok(());
             }
-            ext_info!(
+            info!(
                 log,
-                "Replacing alternate partition with sha",
-                sha = other_digest
+                "A new version was found, proceeding with update",
+                current = &current.uuid,
+                new = &new.internal.uuid
             );
-        }
-    }
-    if !found_current {
-        return Err(anyhow!("Unable to find mounted root device"));
-    }
-    let other_path =
-        found_other_part.ok_or_else(|| anyhow!("Unable to find alternate root device"))?;
 
-    // Install + check more things
-    ext_info!(log, "Downloading new image");
-    bucket.get_object_to_writer(
-        &new.internal.object_path,
-        &mut Writer::new(
-            &mut BufWriter::new(&mut File::create(&other_path)?),
-            Decoder::new()?,
-        ),
-    )?;
-    ext_info!(log, "Verifying image hash");
-    let download_digest = file_digest(&other_path, new.size)?;
-    if download_digest != new.sha256 {
-        return Err(anyhow!(
-            "Downloaded digest {} doesn't match reported digest on server {}",
-            download_digest,
-            new.sha256
-        ));
-    }
-
-    // Update the grub
-    ext_info!(log, "Updating grub");
-    {
-        let _mount = mount_boot(log.clone())?;
-        File::create("/boot/grub/grub.cfg")?.write_all(
-            GrubTemplate {
-                current: &current,
-                new: &new.internal,
+            // Identify current and alt root partitions
+            let mut found_current = false;
+            let mut found_other_part = None;
+            let (root_disk, root_parts) = find_root_parts(&log)?;
+            for part in root_parts {
+                if let Some(_) = part.mountpoint {
+                    found_current = true;
+                } else {
+                    found_other_part = Some(PathBuf::from_str(&part.path)?);
+                    let other_digest = file_digest(Path::new(&part.path), new.size)?;
+                    if other_digest == new.sha256 {
+                        info!(log, "Digest of alternate partition matches new digest, must have fallen back. Aborting", digest=&new.sha256);
+                        return Ok(());
+                    }
+                    info!(
+                        log,
+                        "Replacing alternate partition with sha",
+                        sha = other_digest
+                    );
+                }
             }
-            .render()
-            .unwrap()
-            .as_ref(),
-        )?;
-        if let Err(e) = Command::new("grub-install")
-            .arg("--target=i386-pc")
-            .arg(root_disk.path)
-            .run()
-        {
-            return Err(anyhow!("grub-install failed").context(e));
-        }
-    }
+            if !found_current {
+                return Err(anyhow!("Unable to find mounted root device"));
+            }
+            let other_path =
+                found_other_part.ok_or_else(|| anyhow!("Unable to find alternate root device"))?;
 
-    // Reboot into new version
-    int_info!(log, "Grub installed successfully, rebooting in 15s");
-    std::thread::sleep(Duration::seconds(15).to_std().unwrap());
-    Command::new("reboot").run()?;
-    Ok(()) // dead code
+            // Install + check more things
+            info!(log, "Downloading new image");
+            let mut digest = Sha256::new();
+            ec!(
+                ("Downloading new image to {}", other_path.to_string_lossy()),
+                {
+                    let mut proxy = ProxyWrite {
+                        a: &mut digest,
+                        b: &mut File::create(&other_path)
+                            .context("Failed to open {} for writing")?,
+                    };
+                    let mut buf_writer = BufWriter::new(&mut proxy);
+                    let mut writer = Writer::new(&mut buf_writer, Decoder::new().unwrap());
+                    bucket
+                        .get_object_to_writer(&new.internal.object_path, &mut writer)
+                        .context("Error downloading image")?;
+                    writer.finish().context("Failed to flush/finish output")?;
+                    Ok(())
+                }
+            )?;
+            let download_digest = format!("{:x}", digest.finalize());
+            if download_digest != new.sha256 {
+                return Err(anyhow!(
+                    "Downloaded digest {} doesn't match reported digest on server {}",
+                    download_digest,
+                    new.sha256
+                ));
+            }
+
+            // Update the grub
+            info!(log, "Updating grub");
+            let grub_cfg_path = "/boot/grub/grub.cfg";
+            ec!(
+                (
+                    "Updating grub on {} with config {}",
+                    &root_disk.path,
+                    &grub_cfg_path
+                ),
+                {
+                    let _mount = mount_boot(log.clone())?;
+                    File::create(grub_cfg_path)
+                        .context("Failed to open grub config for writing")?
+                        .write_all(
+                            GrubTemplate {
+                                current: &current,
+                                new: &new.internal,
+                            }
+                            .render()
+                            .unwrap()
+                            .as_ref(),
+                        )
+                        .context("Failed to write grub file contents")?;
+                    Command::new("grub-install")
+                        .arg("--target=i386-pc")
+                        .arg(&root_disk.path)
+                        .run()?;
+                    Ok(())
+                }
+            )?;
+
+            // Reboot into new version
+            info!(log, "Grub installed successfully, rebooting in 15s");
+            std::thread::sleep(Duration::seconds(15).to_std().unwrap());
+            Command::new("reboot").run()?;
+            Ok(()) // dead code
+        }
+    )
 }
 
 fn main() {
@@ -147,11 +178,11 @@ fn main() {
         let root_log = builder.build().unwrap();
         match main_inner(root_log.clone()) {
             Ok(_) => {
-                int_info!(root_log, "Done.");
+                info!(root_log, "Done");
                 return true;
             }
             Err(e) => {
-                int_err!(root_log, "Exiting with error", err = format!("{:?}", e));
+                err!(root_log, "Exiting with error", err = format!("{:?}", e));
                 return false;
             }
         };

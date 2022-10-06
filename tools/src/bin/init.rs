@@ -1,11 +1,11 @@
 use std::{
     fs::{create_dir_all, File},
-    io::{self, BufWriter, Write},
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
     process::{exit, Command},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use askama::Template;
 use chrono::Duration;
 use clap::Parser;
@@ -17,8 +17,8 @@ use sloggers::{
     Build,
 };
 use tools::{
-    find_root_parts, int_err, int_info, lsblk, mount_boot, read_bytes, retry, ExternalMeta,
-    InternalMeta, SimpleCommand, BOOT_LABEL, ROOT_LABELS,
+    copy_finish, ec, err, find_root_parts, info, lsblk, mount_boot, read_bytes, retry,
+    ExternalMeta, InternalMeta, SimpleCommand, BOOT_LABEL, ROOT_LABELS,
 };
 use zstd::stream::{raw::Decoder, zio::Writer};
 
@@ -43,8 +43,10 @@ struct Args {
 
 fn main_inner(log: Logger) -> Result<()> {
     let args = Args::parse();
-    // Can't meaningfully wrap this either due to rust or serde design decisions...
-    let config: InitConfig = serde_json::from_slice(&read_bytes(&args.config_path)?)?;
+    let config: InitConfig = ec!(
+        ("Reading config from {}", args.config_path.to_string_lossy()),
+        Ok(serde_json::from_slice(&read_bytes(&args.config_path)?)?)
+    )?;
 
     let root_disk = match lsblk()?
         .into_iter()
@@ -119,7 +121,7 @@ fn main_inner(log: Logger) -> Result<()> {
                 return Ok(());
             } else {
                 return Err(anyhow!(
-                    "{} doesn't exist for mkfs yet",
+                    "{} doesn't exist yet, needed for mkfs",
                     path.to_string_lossy()
                 ));
             }
@@ -132,36 +134,29 @@ fn main_inner(log: Logger) -> Result<()> {
     // Install the first version + grub
     let root_part = find_root_parts(&log)?.1[0].clone();
 
-    io::copy(
-        &mut File::open(&config.version_path).map_err(|e| {
-            anyhow!(
-                "Unable to open source version file {}",
-                config.version_path.to_string_lossy()
-            )
-            .context(e)
-        })?,
-        &mut Writer::new(
-            &mut BufWriter::new(&mut File::create(Path::new(&root_part.path)).map_err(|e| {
-                anyhow!(
-                    "Unable to open target root partition {} for writing",
-                    &root_part.path
-                )
-                .context(e)
-            })?),
-            Decoder::new().unwrap(),
+    ec!(
+        (
+            "Writing initial image from {} to {}",
+            config.version_path.to_string_lossy(),
+            &root_part.path
         ),
-    )
-    .map_err(|e| anyhow!("Error while writing source image to root parition").context(e))?;
+        Ok(copy_finish(
+            &mut File::open(&config.version_path).context("Unable to open source")?,
+            &mut Writer::new(
+                &mut BufWriter::new(
+                    &mut File::create(Path::new(&root_part.path)).context("Unable to open dest")?
+                ),
+                Decoder::new().unwrap(),
+            ),
+        )?)
+    )?;
 
-    {
-        create_dir_all("/boot")
-            .map_err(|e| anyhow!("Failed to create /boot for grub installation").context(e))?;
+    ec!(("Installing grub"), {
+        create_dir_all("/boot").map_err(|e| anyhow!("Failed to create /boot").context(e))?;
         let _mount = mount_boot(log.clone())?;
-        create_dir_all("/boot/grub").map_err(|e| {
-            anyhow!("Failed to create /boot/grub in mount for grub installation").context(e)
-        })?;
+        create_dir_all("/boot/grub").context("Failed to ensure /boot/grub/")?;
         File::create("/boot/grub/grub.cfg")
-            .map_err(|e| anyhow!("Unable to open grub.cfg for writing").context(e))?
+            .context("Unable to open grub.cfg for writing")?
             .write_all(
                 GrubTemplate {
                     new: &config.version.internal,
@@ -170,15 +165,13 @@ fn main_inner(log: Logger) -> Result<()> {
                 .unwrap()
                 .as_ref(),
             )
-            .map_err(|e| anyhow!("Error writing to grub.cfg").context(e))?;
-        if let Err(e) = Command::new("grub-install")
+            .context("Error writing to grub.cfg")?;
+        Command::new("grub-install")
             .arg("--target=i386-pc")
             .arg(root_disk.path)
-            .run()
-        {
-            return Err(anyhow!("grub-install failed").context(e));
-        }
-    }
+            .run()?;
+        Ok(())
+    })?;
 
     Command::new("poweroff").run()?;
     return Ok(()); // dead code
@@ -192,11 +185,11 @@ fn main() {
         let root_log = builder.build().unwrap();
         match main_inner(root_log.clone()) {
             Ok(_) => {
-                int_info!(root_log, "Done.");
+                info!(root_log, "Done.");
                 return true;
             }
             Err(e) => {
-                int_err!(root_log, "Exiting with error", err = format!("{:?}", e));
+                err!(root_log, "Exiting with error", err = format!("{:?}", e));
                 return false;
             }
         };

@@ -10,7 +10,7 @@ askama = "0.11.1"
 chrono = "0.4.22"
 clap = { version = "3.2.22", features = ["derive"] }
 hhmmss = "0.1.0"
-rust-s3 = { git = 'https://github.com/andrewbaxter/rust-s3', branch = 'sync-get-stream', features = [
+rust-s3 = { git = 'https://github.com/durch/rust-s3', branch = 'master', features = [
     "sync",
     "sync-native-tls",
 ], default-features = false }

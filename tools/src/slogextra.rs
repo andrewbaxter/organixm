@@ -66,75 +66,33 @@ macro_rules! kv(
 
 // Verbose, filled with details, not normally required
 #[macro_export(local_inner_macros)]
-macro_rules! ext_trace(
-    ($l:expr, #$tag:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Trace, $tag, $($args)*)
-    };
+macro_rules! trace(
     ($l:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Trace, "", $($args)*, src = "external")
-    };
-);
-
-#[macro_export(local_inner_macros)]
-macro_rules! int_trace(
-    ($l:expr, #$tag:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Trace, $tag, $($args)*)
-    };
-    ($l:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Trace, "", $($args)*, src = "internal")
+        log!($l, slog::Level::Trace, "", $($args)*)
     };
 );
 
 // Decisions
 #[macro_export(local_inner_macros)]
-macro_rules! ext_info(
-    ($l:expr, #$tag:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Info, $tag, $($args)*)
-    };
+macro_rules! info(
     ($l:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Info, "", $($args)*, src = "external")
-    };
-);
-
-#[macro_export(local_inner_macros)]
-macro_rules! int_info(
-    ($l:expr, #$tag:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Info, $tag, $($args)*)
-    };
-    ($l:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Info, "", $($args)*, src = "internal")
+        log!($l, slog::Level::Info, "", $($args)*)
     };
 );
 
 // Invalid behavior, but not critical
 #[macro_export(local_inner_macros)]
-macro_rules! ext_warn(
-    ($l:expr, #$tag:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Warn, $tag, $($args)*)
-    };
+macro_rules! warn(
     ($l:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Warning, "", $($args)*, src = "external")
-    };
-);
-
-#[macro_export(local_inner_macros)]
-macro_rules! int_warn(
-    ($l:expr, #$tag:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Warn, $tag, $($args)*)
-    };
-    ($l:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Warning, "", $($args)*, src = "internal")
+        log!($l, slog::Level::Warning, "", $($args)*)
     };
 );
 
 // Critical failures
 #[macro_export(local_inner_macros)]
-macro_rules! int_err(
-    ($l:expr, #$tag:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Error, $tag, $($args)*)
-    };
+macro_rules! err(
     ($l:expr, $($args:tt)*) => {
-        log!($l, slog::Level::Error, "", $($args)*, src = "internal")
+        log!($l, slog::Level::Error, "", $($args)*)
     };
 );
 
@@ -190,6 +148,11 @@ macro_rules! log(
    ($l:expr, $lvl:expr, $tag:expr, $fmt:tt, $($args:tt)*) => {
        if $lvl.as_usize() <= slog::__slog_static_max_level().as_usize() {
            log!(1 @ { }, { }, $l, $lvl, $tag, $fmt; $($args)*)
+       }
+   };
+   ($l:expr, $lvl:expr, $tag:expr, $fmt:tt) => {
+       if $lvl.as_usize() <= slog::__slog_static_max_level().as_usize() {
+           log!(1 @ { }, { }, $l, $lvl, $tag, $fmt; )
        }
    };
 );

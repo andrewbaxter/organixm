@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::{Duration, Utc};
 use hhmmss::Hhmmss;
 use s3::{creds::Credentials, Bucket};
@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use slog::Logger;
 use std::{
+    fmt::{self},
     fs::File,
-    io::{self, Read},
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::Command,
     str::FromStr,
@@ -17,15 +18,17 @@ use std::{
 pub mod slogextra;
 
 pub const BOOT_LABEL: &'static str = "boot";
-pub const ROOT_LABELS: [&'static str; 2] = ["organixm-a", "brone-b"];
+pub const ROOT_LABELS: [&'static str; 2] = ["organixm-a", "organixm-b"];
 
 pub fn read_bytes(p: &Path) -> Result<Vec<u8>> {
-    let mut buf = vec![];
-    File::open(p)
-        .map_err(|e| anyhow!("Error opening {} to read", p.to_string_lossy()).context(e))?
-        .read_to_end(&mut buf)
-        .map_err(|e| anyhow!("Error while reading {}", p.to_string_lossy()).context(e))?;
-    return Ok(buf);
+    ec!(("Reading {}", p.to_string_lossy()), {
+        let mut buf = vec![];
+        File::open(p)
+            .context("Failed to open file")?
+            .read_to_end(&mut buf)
+            .context("Error during read")?;
+        return Ok(buf);
+    })
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -39,21 +42,23 @@ struct IpRoute {
 }
 
 pub fn has_internet_gw() -> Result<bool> {
-    let output = Command::new("ip")
-        .arg("--json")
-        .arg("route")
-        .arg("show")
-        .output()
-        .map_err(|e| anyhow!("Failed to run ip route show").context(e))?;
-    let parsed = serde_json::from_slice::<Vec<IpRoute>>(&output.stdout)
-        .map_err(|e| anyhow!("Failed to parse ip route show output:\n{:?}", &output).context(e))?;
-    for r in parsed {
-        if r.dst != "default" {
-            continue;
+    ec!(("Checking for gateway route"), {
+        let output = Command::new("ip")
+            .arg("--json")
+            .arg("route")
+            .arg("show")
+            .output()
+            .context("Failed to run ip route show")?;
+        let parsed = serde_json::from_slice::<Vec<IpRoute>>(&output.stdout)
+            .with_context(|| anyhow!("Failed to parse ip route show output:\n{:?}", &output))?;
+        for r in parsed {
+            if r.dst != "default" {
+                continue;
+            }
+            return Ok(true);
         }
-        return Ok(true);
-    }
-    return Ok(false);
+        return Ok(false);
+    })
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -101,12 +106,12 @@ pub fn find_root_parts(log: &Logger) -> Result<(LsblkDevice, [LsblkDevice; 2])> 
             let label = match &part.partlabel {
                 Some(l) => l,
                 None => {
-                    ext_trace!(log, "Device has no gpt label, skipping", dev = &part.path);
+                    trace!(log, "Device has no gpt label, skipping", dev = &part.path);
                     continue;
                 }
             };
             if !ROOT_LABELS.iter().any(|l| *l == label) {
-                ext_trace!(
+                trace!(
                     log,
                     "Device has unknown gpt label, skipping",
                     dev = &part.path,
@@ -164,7 +169,7 @@ impl Mount {
 impl Drop for Mount {
     fn drop(&mut self) {
         if let Err(e) = Command::new("umount").arg(self.dest.as_os_str()).run() {
-            ext_warn!(
+            warn!(
                 self.log,
                 "Failed to unmount",
                 dest = self.dest.to_string_lossy().to_string(),
@@ -208,7 +213,7 @@ pub struct ExternalMeta {
 pub fn current_meta() -> Result<InternalMeta> {
     Ok(
         serde_json::from_slice(&read_bytes(Path::new("/organixm.json"))?)
-            .map_err(|e| anyhow!("Failed to parse current system meta").context(e))?,
+            .context("Failed to parse current system meta")?,
     )
 }
 
@@ -235,7 +240,7 @@ pub fn retry<R, F: FnMut() -> Result<R>>(
                 anyhow!("Giving up after {} ({} attempts)", elapsed.hhmmss(), count).context(e),
             );
         }
-        int_trace!(log, "Retry attempt failed", err = format!("{:?}", e));
+        trace!(log, "Retry attempt failed", err = format!("{:?}", e));
         thread::sleep(period.to_std().unwrap());
     }
 }
@@ -264,7 +269,7 @@ impl SimpleCommand for Command {
 
 pub fn file_digest(path: &Path, size: u64) -> Result<String> {
     let mut other_digest = sha2::Sha256::new();
-    io::copy(&mut File::open(path)?.take(size), &mut other_digest)?;
+    copy_finish(&mut File::open(path)?.take(size), &mut other_digest)?;
     Ok(format!("{:x}", other_digest.finalize()))
 }
 
@@ -282,4 +287,47 @@ pub fn version_bucket(version: &InternalMeta) -> Result<Bucket> {
     )?;
     bucket.set_request_timeout(Some(Duration::minutes(60).to_std().unwrap()));
     Ok(bucket)
+}
+
+pub struct ErrCtx<'a>(pub fmt::Arguments<'a>);
+
+impl<'a> ErrCtx<'a> {
+    #[inline(always)]
+    pub fn e<R, F: FnOnce() -> Result<R>>(self, f: F) -> Result<R> {
+        f().with_context(|| self.0.to_string())
+    }
+}
+
+#[macro_export]
+macro_rules! ec {
+    (($($args:expr),+), $b:expr) => {
+        $crate::ErrCtx(format_args!($($args),+)).e(|| $b)
+    };
+}
+
+pub struct ProxyWrite<'t, A: Write, B: Write> {
+    pub a: &'t mut A,
+    pub b: &'t mut B,
+}
+
+impl<'t, A: Write, B: Write> Write for ProxyWrite<'t, A, B> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.a.write(buf)?;
+        self.b.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.a.flush()?;
+        self.b.flush()
+    }
+}
+
+pub fn copy_finish<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64>
+where
+    R: Read,
+    W: Write,
+{
+    let out = std::io::copy(reader, writer)?;
+    writer.flush()?;
+    Ok(out)
 }

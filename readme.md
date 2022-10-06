@@ -14,6 +14,8 @@ Subsequent versions you upload to a file server (right now, any S3 compatible).
 
 When the system boots, it checks for a newer version from the file server and updates itself.
 
+See <https://github.com/andrewbaxter/gears-kiosk> for an example system, including CI builds.
+
 # Usage
 
 `default.nix` can be used directly from `nix-build` or your flake or however you'd like.

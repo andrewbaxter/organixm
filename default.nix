@@ -233,9 +233,6 @@ let
                       src = ./tools;
                       cargoLock = {
                         lockFile = ./tools/Cargo.lock;
-                        outputHashes = {
-                          "rust-s3-0.33.0-beta2" = "sha256-nlsQoip0xle4qnm1oPbtn0QaxBUJwT1sRzqwYqIlFCw=";
-                        };
                       };
                       nativeBuildInputs = [ pkg-config ];
                       buildInputs = [ openssl ];

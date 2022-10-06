@@ -185,7 +185,7 @@ fn main() {
         let root_log = builder.build().unwrap();
         match main_inner(root_log.clone()) {
             Ok(_) => {
-                info!(root_log, "Done.");
+                info!(root_log, "Done");
                 return true;
             }
             Err(e) => {

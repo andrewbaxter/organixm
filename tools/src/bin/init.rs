@@ -44,7 +44,10 @@ struct Args {
 fn main_inner(log: Logger) -> Result<()> {
     let args = Args::parse();
     let config: InitConfig = ec!(
-        ("Reading config from {}", args.config_path.to_string_lossy()),
+        (
+            "Error reading config from {}",
+            args.config_path.to_string_lossy()
+        ),
         Ok(serde_json::from_slice(&read_bytes(&args.config_path)?)?)
     )?;
 
@@ -136,7 +139,7 @@ fn main_inner(log: Logger) -> Result<()> {
 
     ec!(
         (
-            "Writing initial image from {} to {}",
+            "Error writing initial image from {} to {}",
             config.version_path.to_string_lossy(),
             &root_part.path
         ),
@@ -151,7 +154,7 @@ fn main_inner(log: Logger) -> Result<()> {
         )?)
     )?;
 
-    ec!(("Installing grub"), {
+    ec!(("Error installing grub"), {
         create_dir_all("/boot").map_err(|e| anyhow!("Failed to create /boot").context(e))?;
         let _mount = mount_boot(log.clone())?;
         create_dir_all("/boot/grub").context("Failed to ensure /boot/grub/")?;

@@ -34,13 +34,14 @@ fn main_inner(log: Logger) -> Result<()> {
     let current = current_meta()?;
     ec!(
         (
-            "Updating image from {}/{}",
+            "Failed to update image from {}/{}",
             current.bucket,
             current.object_path
         ),
         {
             // Wait for internet
             retry(&log, Duration::minutes(10), Duration::seconds(10), || {
+                info!(log, "Waiting for route to internet...");
                 if has_internet_gw()? {
                     return Ok(());
                 }
@@ -51,7 +52,7 @@ fn main_inner(log: Logger) -> Result<()> {
             let bucket = version_bucket(&current)?;
 
             let new: ExternalMeta = ec!(
-                ("Fetching new version meta"),
+                ("Error fetching new version meta"),
                 Ok(serde_json::from_slice(
                     bucket
                         .get_object(format!("{}.meta", current.object_path))
@@ -88,11 +89,7 @@ fn main_inner(log: Logger) -> Result<()> {
                         info!(log, "Digest of alternate partition matches new digest, must have fallen back. Aborting", digest=&new.sha256);
                         return Ok(());
                     }
-                    info!(
-                        log,
-                        "Replacing alternate partition with sha",
-                        sha = other_digest
-                    );
+                    info!(log, "Hash of alternate partition", sha = other_digest);
                 }
             }
             if !found_current {
@@ -105,7 +102,10 @@ fn main_inner(log: Logger) -> Result<()> {
             info!(log, "Downloading new image");
             let mut digest = Sha256::new();
             ec!(
-                ("Downloading new image to {}", other_path.to_string_lossy()),
+                (
+                    "Error downloading new image to {}",
+                    other_path.to_string_lossy()
+                ),
                 {
                     let mut proxy = ProxyWrite {
                         a: &mut digest,
@@ -135,7 +135,7 @@ fn main_inner(log: Logger) -> Result<()> {
             let grub_cfg_path = "/boot/grub/grub.cfg";
             ec!(
                 (
-                    "Updating grub on {} with config {}",
+                    "Error updating grub on {} with config {}",
                     &root_disk.path,
                     &grub_cfg_path
                 ),

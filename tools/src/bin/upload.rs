@@ -28,7 +28,7 @@ fn main_inner() -> Result<()> {
          serde_json::from_slice(&read_bytes(&args.version_meta)?)?;
     ec!(
         (
-            "Uploading {} to {}/{}",
+            "Error uploading {} to {}/{}",
             args.image.to_string_lossy(),
             &version.internal.bucket,
             &version.internal.object_path

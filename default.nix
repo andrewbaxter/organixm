@@ -156,7 +156,7 @@ let
 
           systemd = {
             services = {
-              premount-rw-overlays =
+              "premount-rw-overlays" =
                 let
                   undeps = [ "var.mount" "root.mount" "home.mount" ];
                 in
@@ -179,7 +179,7 @@ let
                     '';
                   };
                 };
-              organixm_update = {
+              "organixm-update" = {
                 wantedBy = [ "multi-user.target" ];
                 description = "organixm-update";
                 path = [
@@ -190,12 +190,13 @@ let
                 serviceConfig = {
                   Type = "oneshot";
                   ExecStart = "${config.system.build.tools}/bin/update";
+                  RemainAfterExit = "true";
                 };
               };
-              organixm_success = {
+              "organixm-success" = {
                 wantedBy = [ "multi-user.target" ];
                 description = "organixm-success";
-                after = [ version_success_unit "organixm_update.service" ];
+                after = [ version_success_unit "organixm-update.service" ];
                 requires = [ version_success_unit ];
                 path = [
                   pkgs.grub2
@@ -204,6 +205,7 @@ let
                 serviceConfig = {
                   Type = "oneshot";
                   ExecStart = "${config.system.build.tools}/bin/success";
+                  RemainAfterExit = "true";
                 };
               };
             };
